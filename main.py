@@ -85,7 +85,7 @@ def combine_two_pages(img1: Image.Image, img2: Image.Image) -> Image.Image:
 # Core pipeline
 # --------------------------------------------------------------------------- #
 
-def run_pipeline(pdf_path: str, dpi: int, two_in_one: bool, progress_cb=None) -> str:
+def run_pipeline(pdf_path: str, dpi: int, jpeg_quality: int, two_in_one: bool, progress_cb=None) -> str:
     def report(value, maximum, text):
         if progress_cb:
             progress_cb(value, maximum, text)
@@ -107,7 +107,7 @@ def run_pipeline(pdf_path: str, dpi: int, two_in_one: bool, progress_cb=None) ->
         report(i, n_pages * 3, f"Extracting page {i + 1}/{n_pages}")
         pix = page.get_pixmap(matrix=mat, alpha=False)
         jpg_path = os.path.join(extract_folder, f"{pdf_name}_{i + 1:04d}.jpg")
-        pix.save(jpg_path, jpg_quality=100)
+        pix.save(jpg_path, jpg_quality=jpeg_quality)
         jpg_paths.append(jpg_path)
     doc.close()
 
@@ -180,6 +180,7 @@ class App(tk.Tk):
 
         self.pdf_path = tk.StringVar()
         self.dpi = tk.StringVar(value="300")
+        self.jpeg_quality = tk.StringVar(value="98")
         self.two_in_one = tk.BooleanVar(value=True)
         self.start_dir = get_start_dir()
 
@@ -197,20 +198,23 @@ class App(tk.Tk):
         ttk.Label(frm, text="DPI:").grid(row=2, column=0, sticky="w", **pad)
         ttk.Entry(frm, textvariable=self.dpi, width=10).grid(row=2, column=1, sticky="w", **pad)
 
+        ttk.Label(frm, text="JPG Quality(0-100: 98 is close to lossless.):").grid(row=3, column=0, sticky="w", **pad)
+        ttk.Entry(frm, textvariable=self.jpeg_quality, width=10).grid(row=3, column=1, sticky="w", **pad)
+
         ttk.Checkbutton(
             frm, text="Combine 2 pages into 1", variable=self.two_in_one
-        ).grid(row=3, column=0, columnspan=2, sticky="w", **pad)
+        ).grid(row=4, column=0, columnspan=2, sticky="w", **pad)
 
         btns = ttk.Frame(frm)
-        btns.grid(row=4, column=0, columnspan=3, pady=(10, 0))
+        btns.grid(row=5, column=0, columnspan=3, pady=(10, 0))
         self.run_btn = ttk.Button(btns, text="Run", command=self.on_run)
         self.run_btn.pack(side="left", padx=5)
         ttk.Button(btns, text="Cancel", command=self.destroy).pack(side="left", padx=5)
 
         self.progress = ttk.Progressbar(frm, mode="determinate", length=400)
-        self.progress.grid(row=5, column=0, columnspan=3, pady=(12, 0))
+        self.progress.grid(row=6, column=0, columnspan=3, pady=(12, 0))
         self.status = ttk.Label(frm, text="")
-        self.status.grid(row=6, column=0, columnspan=3, sticky="w", padx=10)
+        self.status.grid(row=7, column=0, columnspan=3, sticky="w", padx=10)
 
     def browse(self):
         path = filedialog.askopenfilename(
@@ -238,18 +242,26 @@ class App(tk.Tk):
             messagebox.showerror("Error", "DPI must be a positive whole number.")
             return
 
+        try:
+            jpeg_quality = int(self.jpeg_quality.get().strip())
+            if jpeg_quality <= 0:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Error", "JPEG Quality must be a positive whole number.")
+            return
+
         two_in_one = self.two_in_one.get()
         self.run_btn.config(state="disabled")
         self.set_status("Processing...")
 
         thread = threading.Thread(
-            target=self.process, args=(pdf_path, dpi, two_in_one), daemon=True
+            target=self.process, args=(pdf_path, dpi, jpeg_quality,two_in_one), daemon=True
         )
         thread.start()
 
-    def process(self, pdf_path, dpi, two_in_one):
+    def process(self, pdf_path, dpi, jpeg_quality,two_in_one):
         try:
-            result_path = run_pipeline(pdf_path, dpi, two_in_one, progress_cb=self.report_progress)
+            result_path = run_pipeline(pdf_path, dpi, jpeg_quality,two_in_one, progress_cb=self.report_progress)
             self.after(0, lambda: self.finish_ok(result_path))
         except Exception as e:
             tb = traceback.format_exc()
